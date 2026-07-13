@@ -1,0 +1,136 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  name: Default
+
+variables:
+  - group: vg-entregable5-rag
+  - name: imageTag
+    value: "$(Build.BuildId)"
+  - name: artifactName
+    value: "drop-$(Build.BuildId)"
+
+stages:
+  - stage: Validate
+    displayName: "Validar codigo y pruebas"
+    jobs:
+      - job: Tests
+        displayName: "Instalar dependencias y ejecutar pytest"
+        steps:
+          - checkout: self
+          - powershell: |
+              $ErrorActionPreference = "Stop"
+              python --version
+              python -m pip install --upgrade pip
+              python -m pip install -r requirements.txt
+              python -m pytest -q
+            displayName: "Ejecutar pruebas"
+
+  - stage: BuildAndPush
+    displayName: "Construir y publicar imagen en ACR"
+    dependsOn: Validate
+    condition: succeeded()
+    jobs:
+      - job: DockerBuild
+        displayName: "Build and Push image to ACR"
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: "Docker build y push a ACR"
+            inputs:
+              azureSubscription: "$(azureServiceConnection)"
+              scriptType: ps
+              scriptLocation: inlineScript
+              useGlobalConfig: true
+              inlineScript: |
+                $ErrorActionPreference = "Stop"
+                $imageBuildTag = "$(acrLoginServer)/$(imageRepository):$(imageTag)"
+                $imageLatestTag = "$(acrLoginServer)/$(imageRepository):latest"
+                az account show --output table --only-show-errors
+                az acr show --name "$(acrName)" --resource-group "$(resourceGroup)" --output table --only-show-errors
+                docker version
+                docker logout "$(acrLoginServer)" 2>$null
+                az acr login --name "$(acrName)" --only-show-errors
+                if ($LASTEXITCODE -ne 0) {
+                  $acrUser = az acr credential show --name "$(acrName)" --query "username" -o tsv
+                  $acrPass = az acr credential show --name "$(acrName)" --query "passwords[0].value" -o tsv
+                  docker login "$(acrLoginServer)" -u $acrUser -p $acrPass
+                }
+                docker build -f "$(dockerfilePath)" -t $imageBuildTag -t $imageLatestTag .
+                docker push $imageBuildTag
+                docker push $imageLatestTag
+
+  - stage: Deploy
+    displayName: "Despliegue continuo a Azure Container Apps"
+    dependsOn: BuildAndPush
+    condition: succeeded()
+    jobs:
+      - job: DeployContainerApp
+        displayName: "Actualizar Container App existente"
+        steps:
+          - checkout: self
+          - task: AzureCLI@2
+            displayName: "Actualizar ACA existente"
+            inputs:
+              azureSubscription: "$(azureServiceConnection)"
+              scriptType: ps
+              scriptLocation: inlineScript
+              useGlobalConfig: true
+              inlineScript: |
+                $ErrorActionPreference = "Stop"
+                $image = "$(acrLoginServer)/$(imageRepository):$(imageTag)"
+                $acrUser = az acr credential show --name "$(acrName)" --query "username" -o tsv
+                $acrPass = az acr credential show --name "$(acrName)" --query "passwords[0].value" -o tsv
+                az containerapp secret set `
+                  --name "$(containerAppName)" `
+                  --resource-group "$(resourceGroup)" `
+                  --secrets "azure-sql-connection-string=$env:AZURE_SQL_CONNECTION_STRING"
+                az containerapp registry set `
+                  --name "$(containerAppName)" `
+                  --resource-group "$(resourceGroup)" `
+                  --server "$(acrLoginServer)" `
+                  --username $acrUser `
+                  --password $acrPass
+                az containerapp update `
+                  --name "$(containerAppName)" `
+                  --resource-group "$(resourceGroup)" `
+                  --set-env-vars APP_ENV=azure LLM_PROVIDER=demo AZURE_SQL_CONNECTION_STRING=secretref:azure-sql-connection-string TOP_K=3
+                az containerapp update `
+                  --name "$(containerAppName)" `
+                  --resource-group "$(resourceGroup)" `
+                  --image $image
+            env:
+              AZURE_SQL_CONNECTION_STRING: $(AZURE_SQL_CONNECTION_STRING)
+
+  - stage: ValidateDeployment
+    displayName: "Validar despliegue"
+    dependsOn: Deploy
+    condition: succeeded()
+    jobs:
+      - job: ValidateEndpoints
+        displayName: "Validar endpoints publicos"
+        steps:
+          - task: AzureCLI@2
+            displayName: "Probar endpoints publicos"
+            inputs:
+              azureSubscription: "$(azureServiceConnection)"
+              scriptType: ps
+              scriptLocation: inlineScript
+              useGlobalConfig: true
+              inlineScript: |
+                $ErrorActionPreference = "Stop"
+                $fqdn = az containerapp show `
+                  --name "$(containerAppName)" `
+                  --resource-group "$(resourceGroup)" `
+                  --query properties.configuration.ingress.fqdn `
+                  -o tsv
+                $baseUrl = "https://$fqdn"
+                Start-Sleep -Seconds 35
+                Invoke-RestMethod -Uri "$baseUrl/"
+                Invoke-RestMethod -Uri "$baseUrl/health"
+                Invoke-RestMethod -Uri "$baseUrl/knowledge"
+                $body = @{ question = "Explica que es RAG y que papel cumple Azure SQL" } | ConvertTo-Json
+                Invoke-RestMethod -Method Post -Uri "$baseUrl/ask" -ContentType "application/json" -Body $body
