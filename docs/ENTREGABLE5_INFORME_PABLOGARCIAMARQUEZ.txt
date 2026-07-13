@@ -1,0 +1,283 @@
+================================================================================
+INFORME FINAL — ENTREGABLE 5
+Despliegue automatizado de agente RAG con FastAPI, Azure SQL, Docker,
+Azure Container Registry, Azure Container Apps y CI/CD con Azure DevOps
+================================================================================
+
+Alumno: Pablo García Márquez
+Proyecto: entregable5-rag-azure
+Repositorio: https://dev.azure.com/garciamarquezpablo/entregable5-rag-azure
+Fecha: 13 de julio de 2026
+
+NOTA DE FORMATO:
+  VERSION CON IMAGENES INCORPORADAS: docs/ENTREGABLE5_INFORME_PABLOGARCIAMARQUEZ.docx
+  (Abrir en Word; Calibri 12, interlineado 1,5; exportar a PDF para entregar.)
+  Este archivo .txt es la version texto; las figuras estan embebidas en el .docx.
+
+================================================================================
+1. OBJETIVO
+================================================================================
+
+El objetivo de este entregable es diseñar e implementar una solución cloud
+completa que integre una API backend contenerizada, una base de datos en Azure,
+un registro de imágenes Docker y un pipeline de integración y despliegue continuo.
+
+La aplicación desarrollada es un agente RAG (Retrieval-Augmented Generation)
+con FastAPI. El sistema recupera fragmentos de conocimiento almacenados en
+Azure SQL Database, los utiliza como contexto y devuelve respuestas trazables
+con fuentes (título, origen y puntuación de relevancia).
+
+El resultado final es una API pública desplegada en Azure Container Apps (ACA),
+alimentada por imágenes publicadas en Azure Container Registry (ACR) y
+automatizada mediante Azure DevOps con un agente self-hosted en Windows.
+
+================================================================================
+2. ARQUITECTURA DE LA SOLUCIÓN
+================================================================================
+
+El flujo de la arquitectura es el siguiente:
+
+  Desarrollador -> Azure Repos (código + azure-pipelines.yml)
+       |
+       v
+  Azure DevOps Pipeline (agente NAVE-NODRIZA, pool Default)
+       |-- Stage Validate: pytest
+       |-- Stage BuildAndPush: docker build + push
+       |-- Stage Deploy: actualización de Container App
+       |-- Stage ValidateDeployment: pruebas HTTP en cloud
+       v
+  Azure Container Registry (acragent5pgar / rag-agent-api)
+       v
+  Azure Container Apps (cae-entregable5-rag, ingress externo :8000)
+       v
+  Azure SQL Database (ragdb / dbo.knowledge_chunks)
+
+Recursos principales en el grupo rg-entregable5-rag (France Central):
+
+  - SQL Server: sql-rag-ent5-pgar
+  - Base de datos: ragdb
+  - ACR: acragent5pgar
+  - Container App: cae-entregable5-rag
+  - URL pública: https://cae-entregable5-rag.thankfulmushroom-31f056e1.francecentral.azurecontainerapps.io
+
+[FIGURA 1]
+Archivo: docs/evidencias/fase2-arquitectura-diagrama.png
+Descripción: Diagrama de arquitectura DevOps → ACR → ACA → Azure SQL.
+
+[FIGURA 2]
+Archivo: docs/evidencias/fase2-02-grupo-recursos-recursos.png
+Descripción: Grupo de recursos rg-entregable5-rag con SQL, ACR y ACA.
+
+================================================================================
+3. CONFIGURACIÓN DEL ENTORNO Y REPOSITORIO
+================================================================================
+
+Se creó el proyecto Azure DevOps entregable5-rag-azure con el código en la
+rama main. La estructura del repositorio incluye la API FastAPI, Dockerfile,
+docker-compose.yml, tests, scripts de validación y el archivo azure-pipelines.yml.
+
+Se utilizó .env.example como plantilla y .gitignore para excluir el archivo
+.env con la cadena ODBC real. El commit principal desplegado es 18e4555.
+
+[FIGURA 3]
+Archivo: docs/evidencias/fase1-01-repositorio-azure-devops-codigo.png
+Descripción: Repositorio en Azure DevOps con código en main.
+
+================================================================================
+4. BASE DE DATOS AZURE SQL
+================================================================================
+
+Se provisionó Azure SQL Database ragdb en el servidor sql-rag-ent5-pgar con
+autenticación SQL (usuario sqladminrag). La tabla dbo.knowledge_chunks almacena
+el conocimiento del agente: id, title, source, content, embedding y metadatos.
+
+Medidas de seguridad aplicadas:
+  - Cadena ODBC solo en .env local y en Variable Group secreta del pipeline.
+  - Firewall con IP del cliente y regla Allow Azure services.
+  - En ACA, la cadena se inyecta mediante secretref, no en texto plano.
+
+Tras ejecutar init_db.py se cargaron 4 fragmentos de conocimiento iniciales,
+validados en el Query editor del portal.
+
+[FIGURA 4]
+Archivo: docs/evidencias/fase2-01-sql-implementacion-completada.png
+Descripción: Implementación de ragdb completada.
+
+[FIGURA 5]
+Archivo: docs/evidencias/fase2-06-sql-firewall-redes.png
+Descripción: Reglas de firewall del servidor SQL.
+
+[FIGURA 6]
+Archivo: docs/evidencias/fase2-07-sql-query-editor-chunks.png
+Descripción: Cuatro filas en dbo.knowledge_chunks.
+
+================================================================================
+5. DESARROLLO LOCAL Y CONTENERIZACIÓN
+================================================================================
+
+La API expone los endpoints /, /health, /knowledge, /ask e /ingest. El modo
+LLM_PROVIDER=demo permite probar el flujo RAG sin coste de APIs externas.
+
+El Dockerfile usa Python 3.11-slim, instala ODBC Driver 18 para pyodbc y
+expone el puerto 8000 con healthcheck sobre /health. Docker Compose levanta
+el servicio agent leyendo variables desde .env.
+
+El comando docker compose build genera la imagen local sin errores.
+
+[FIGURA 7]
+Archivo: docs/evidencias/fase4-04-docker-compose-build.png
+Descripción: Terminal con docker compose build OK.
+
+Validación local mediante Swagger UI (http://localhost:8000/docs): el endpoint
+POST /ask devuelve answer y sources, demostrando el retrieval sobre Azure SQL.
+
+[FIGURA 8]
+Archivo: docs/evidencias/fase4-01-swagger-endpoint-ask.png
+Descripción: Swagger local con POST /ask.
+
+[FIGURA 9]
+Archivo: docs/evidencias/fase4-02-swagger-ask-respuesta-sources.png
+Descripción: Respuesta local con answer y sources.
+
+================================================================================
+6. AZURE CONTAINER REGISTRY Y DESPLIEGUE EN ACA
+================================================================================
+
+6.1 Azure Container Registry
+
+Se creó acragent5pgar (SKU Basic) con admin user habilitado para la práctica
+docente. La imagen rag-agent-api se publicó manualmente con tags v1 y latest,
+y posteriormente el pipeline añadió el tag 12 (Build.BuildId).
+
+[FIGURA 10]
+Archivo: docs/evidencias/fase5-01-acr-overview.png
+Descripción: Overview del ACR acragent5pgar.
+
+[FIGURA 11]
+Archivo: docs/evidencias/fase5-02-acr-admin-user.png
+Descripción: Admin user habilitado en Claves de acceso.
+
+[FIGURA 12]
+Archivo: docs/evidencias/fase5-04-acr-tag-pipeline.png
+Descripción: Repositorio rag-agent-api con tags latest, 12 y v1.
+
+6.2 Azure Container Apps
+
+Se desplegó cae-entregable5-rag con ingress externo en el puerto 8000,
+imagen desde ACR y variables de entorno APP_ENV=azure, LLM_PROVIDER=demo,
+TOP_K=3. La cadena SQL se configuró como secreto azure-sql-connection-string
+referenciado con secretref en la revisión activa.
+
+[FIGURA 13]
+Archivo: docs/evidencias/fase6-01-aca-running-fqdn.png
+Descripción: Container App en ejecución con URL pública.
+
+================================================================================
+7. PIPELINE CI/CD CON AZURE DEVOPS
+================================================================================
+
+Por las limitaciones de Azure for Students (sin parallelism en hosted agents),
+se utilizó un agente self-hosted Windows (NAVE-NODRIZA) en el pool Default,
+con Docker Desktop y Azure CLI disponibles.
+
+Configuración del pipeline:
+  - Variable Group vg-entregable5-rag (AZURE_SQL_CONNECTION_STRING como secreto).
+  - Service Connection SC-AZURE (compartida entre proyectos DevOps).
+  - Stages: Validate, BuildAndPush, Deploy, ValidateDeployment.
+
+El run #20260713.3 completó los cuatro stages en verde en aproximadamente
+siete minutos: tests, build y push a ACR, actualización de ACA y validación
+HTTP automática de /, /health, /knowledge y /ask.
+
+[FIGURA 14]
+Archivo: docs/evidencias/fase7-01-pipeline-stages-verde.png
+Descripción: Pipeline con los cuatro stages completados correctamente.
+
+================================================================================
+8. MONITORIZACIÓN Y VALIDACIÓN EN CLOUD
+================================================================================
+
+Tras el despliegue automatizado se validó la API en la URL pública:
+
+  GET /health  -> status: ok, database: connected, knowledge_chunks: 4
+  GET /knowledge -> total: 4 fragmentos
+  POST /ask -> answer con contexto RAG y sources trazables
+
+[FIGURA 15]
+Archivo: docs/evidencias/fase8-01-health-cloud-terminal.png
+Descripción: Validación en PowerShell de /health y /knowledge en cloud.
+
+[FIGURA 16]
+Archivo: docs/evidencias/fase8-02-ask-cloud-sources.png
+Descripción: POST /ask en cloud con answer y tres sources.
+
+Los logs de la Container App (Secuencia de registro en el portal) muestran
+el arranque de Uvicorn y peticiones HTTP 200 a /health, /knowledge y /ask,
+confirmando el tráfico real hacia la aplicación desplegada.
+
+[FIGURA 17]
+Archivo: docs/evidencias/fase8-03-aca-logs.png
+Descripción: Log stream de ACA con Uvicorn y peticiones recibidas.
+
+================================================================================
+9. REFLEXIÓN Y BUENAS PRÁCTICAS
+================================================================================
+
+RAG frente a una API tradicional:
+  Una API REST convencional responde con datos fijos o reglas programadas.
+  El agente RAG añade recuperación semántica desde una base de conocimiento,
+  lo que permite respuestas contextualizadas y auditables mediante el campo
+  sources. En este proyecto Azure SQL cumple el papel de almacén estructurado
+  de fragmentos, separando datos de la lógica de la aplicación.
+
+Protección de secretos:
+  No se subió .env al repositorio. La cadena ODBC se gestiona como secreto en
+  Azure DevOps y como secretref en Container Apps. Las capturas del informe
+  ocultan contraseñas cuando aparecen en pantalla.
+
+Lecciones del despliegue:
+  - El firewall de Azure SQL debe incluir la IP del cliente y permitir servicios
+    de Azure para que ACA pueda conectar.
+  - En Azure for Students es necesario un agente self-hosted; vmImage hosted
+    no es viable por límites de parallelism.
+  - Las Service Connections de DevOps son por proyecto; compartir SC-AZURE entre
+    proyectos requiere autorización explícita o creación en cada uno.
+
+================================================================================
+10. CONCLUSIÓN
+================================================================================
+
+Se ha completado el ciclo completo de desarrollo y despliegue: código en
+Azure Repos, contenerización con Docker, base de conocimiento en Azure SQL,
+publicación en ACR, exposición en Azure Container Apps y automatización CI/CD
+con validación en cloud.
+
+La solución no se limita a desplegar una API: integra un flujo RAG trazable
+con base de conocimiento en Azure SQL, empaquetado en Docker, publicado en ACR
+y automatizado con Azure DevOps hasta Azure Container Apps.
+
+================================================================================
+ANEXO — ÍNDICE DE FIGURAS
+================================================================================
+
+  Figura 1  — fase2-arquitectura-diagrama.png
+  Figura 2  — fase2-02-grupo-recursos-recursos.png
+  Figura 3  — fase1-01-repositorio-azure-devops-codigo.png
+  Figura 4  — fase2-01-sql-implementacion-completada.png
+  Figura 5  — fase2-06-sql-firewall-redes.png
+  Figura 6  — fase2-07-sql-query-editor-chunks.png
+  Figura 7  — fase4-04-docker-compose-build.png
+  Figura 8  — fase4-01-swagger-endpoint-ask.png
+  Figura 9  — fase4-02-swagger-ask-respuesta-sources.png
+  Figura 10 — fase5-01-acr-overview.png
+  Figura 11 — fase5-02-acr-admin-user.png
+  Figura 12 — fase5-04-acr-tag-pipeline.png
+  Figura 13 — fase6-01-aca-running-fqdn.png
+  Figura 14 — fase7-01-pipeline-stages-verde.png
+  Figura 15 — fase8-01-health-cloud-terminal.png
+  Figura 16 — fase8-02-ask-cloud-sources.png
+  Figura 17 — fase8-03-aca-logs.png
+
+================================================================================
+FIN DEL INFORME
+================================================================================
