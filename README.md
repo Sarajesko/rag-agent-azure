@@ -1,5 +1,7 @@
 # RAG Agent Azure — Entregable 5
 
+[![CI](https://github.com/Sarajesko/rag-agent-azure/actions/workflows/ci.yml/badge.svg)](https://github.com/Sarajesko/rag-agent-azure/actions/workflows/ci.yml)
+
 API **FastAPI** con arquitectura **RAG** (Retrieval Augmented Generation): recupera fragmentos desde **Azure SQL**, genera la respuesta y se despliega en **Azure Container Apps** mediante un pipeline de **Azure DevOps** (ACR + CI/CD).
 
 **Repositorio:** [github.com/Sarajesko/rag-agent-azure](https://github.com/Sarajesko/rag-agent-azure)
@@ -55,6 +57,7 @@ Por defecto usa proveedor `demo` (embeddings deterministas, sin coste). Opcional
 | Proveedor `demo` (sin API key) y `openai` (opcional) | Listo |
 | Docker + Docker Compose (ODBC Driver 18 en imagen) | Listo |
 | Smoke tests con pytest + TestClient | Listo |
+| CI GitHub Actions (pytest en push/PR) | Listo |
 | Pipeline Azure DevOps: Validate → BuildAndPush → Deploy → ValidateDeployment | Listo |
 | Secretos en ACA con `secretref` (sin passwords en YAML) | Listo |
 | Evidencias / capturas en `docs/evidencias/` | Listo |
