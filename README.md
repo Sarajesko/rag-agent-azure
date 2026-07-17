@@ -440,4 +440,4 @@ Separación de responsabilidades: `api` (HTTP) · `agent` (orquestación RAG) ·
 
 ## Autor
 
-**Pablo García Márquez** — Programa Avanzado en Inteligencia Artificial para Programar (Entregable 5).
+**Pablo García Márquez**
