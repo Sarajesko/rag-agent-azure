@@ -35,14 +35,31 @@ Carpeta: `docs/evidencias/`
 | `fase5-02-acr-admin-user.png` | Admin user habilitado en Claves de acceso | Registro en Azure |
 | `fase5-03-acr-repositorio-tags.png` | Repositorio `rag-agent-api` con tags `v1` y `latest` | Registro en Azure |
 
-## Pendientes (añadir cuando las tengas)
+## Fase 6 — Azure Container Apps
 
-| Archivo sugerido | Descripción |
+| Archivo | Descripción | Sección informe |
+|---|---|---|
+| `fase6-01-aca-running-fqdn.png` | Container App en estado Running con FQDN | Despliegue ACA |
+
+## Fase 7 — Pipeline Azure DevOps
+
+| Archivo | Descripción | Sección informe |
+|---|---|---|
+| `fase7-01-pipeline-stages-verde.png` | Pipeline con stages en verde | CI/CD |
+
+## Fase 8 — Validación en cloud
+
+| Archivo | Descripción | Sección informe |
+|---|---|---|
+| `fase8-01-health-cloud.png` | `/health` en URL pública de ACA | Validación cloud |
+| `fase8-01-health-cloud-navegador.png` | `/health` visto en el navegador | Validación cloud |
+| `fase8-01-health-cloud-terminal.png` | `/health` desde terminal | Validación cloud |
+| `fase8-02-ask-cloud-sources.png` | `/ask` en cloud con sources | Validación cloud |
+| `fase8-03-aca-logs.png` | Logs de Azure Container Apps | Observabilidad |
+
+## Otras capturas
+
+| Archivo | Descripción |
 |---|---|
-| `fase4-03-swagger-health-local.png` | GET `/health` con `database: connected` |
 | `fase4-04-docker-compose-build.png` | Terminal con `docker compose build` OK |
-| `fase6-01-aca-running-fqdn.png` | Container App en estado Running |
-| `fase7-01-pipeline-stages-verde.png` | Pipeline con stages en verde |
-| `fase8-01-health-cloud.png` | `/health` en URL pública de ACA |
-| `fase8-02-ask-cloud-sources.png` | `/ask` en cloud con sources |
-| `fase8-03-aca-logs.png` | Logs de Azure Container Apps |
+| `fase5-04-acr-tag-pipeline.png` | Tag de imagen publicado por el pipeline |
